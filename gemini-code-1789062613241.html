@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BLACK RIDGE CITY - CIA TACTICAL SYSTEM</title>
+  
+  <!-- Leaflet CSS & FontAwesome -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <style>
+    :root {
+      --bg-dark: #0a0e17;
+      --panel-bg: #111827;
+      --accent-cyan: #06b6d4;
+      --accent-gold: #f59e0b;
+      --accent-red: #ef4444;
+      --text-main: #f3f4f6;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      overflow-x: hidden;
+    }
+
+    .header-bar {
+      background: #030712;
+      border-bottom: 2px solid var(--accent-cyan);
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .main-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      height: calc(100vh - 65px);
+    }
+
+    .sidebar {
+      background-color: var(--panel-bg);
+      border-left: 1px solid #1f2937;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .content-area {
+      position: relative;
+    }
+
+    #gta-map {
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+
+    .btn-sos {
+      background-color: var(--accent-red);
+      color: #fff;
+      border: none;
+      padding: 12px;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+
+    /* Modal SOS Flash Alert */
+    .sos-modal {
+      display: none;
+      position: fixed;
+      top: 20%;
+      left: 50%;
+      transform: translate(-50%, -20%);
+      background: rgba(127, 29, 29, 0.95);
+      border: 3px solid var(--accent-red);
+      padding: 25px;
+      border-radius: 8px;
+      z-index: 9999;
+      text-align: center;
+      width: 350px;
+      box-shadow: 0 0 30px #ef4444;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-bar">
+    <div>
+      <i class="fa-solid fa-shield-halved" style="color: var(--accent-cyan);"></i>
+      <strong>BLACK RIDGE CITY - CIA FIELD SYSTEM</strong>
+    </div>
+    <div id="user-display">غير مسجل الدخول</div>
+  </div>
+
+  <div class="main-layout">
+    <div class="sidebar">
+      <button class="btn-sos" onclick="triggerSOSAlert()">
+        <i class="fa-solid fa-triangle-exclamation"></i> إرسال نداء طوارئ S.O.S
+      </button>
+
+      <div style="background: #1f2937; padding: 10px; border-radius: 6px;">
+        <h4><i class="fa-solid fa-walkie-talkie"></i> الراديو التكتيكي</h4>
+        <p>الموجة الحالية: <span id="current-channel" style="color: var(--accent-cyan);">CH-1 (104.50)</span></p>
+        <button style="width: 100%; padding: 8px; margin-bottom: 5px;" onclick="send10Code('10-4')">10-4 (مفهوم/استلمت)</button>
+        <button style="width: 100%; padding: 8px; margin-bottom: 5px;" onclick="send10Code('10-20')">10-20 (تحديد الموقع)</button>
+        <button style="width: 100%; padding: 8px;" onclick="send10Code('10-80')">10-80 (مطاردة شغال)</button>
+      </div>
+
+      <button style="padding: 10px; background: #374151; color: #fff; border: none; border-radius: 4px;" onclick="clearMyMapLocation()">
+        مسح موقعي من الخريطة
+      </button>
+    </div>
+
+    <div class="content-area">
+      <div id="gta-map"></div>
+    </div>
+  </div>
+
+  <!-- S.O.S Popup Modal -->
+  <div id="sosAlertModal" class="sos-modal">
+    <h2 style="margin-0; color: #fff;"><i class="fa-solid fa-bell"></i> نداء طوارئ عاجل</h2>
+    <hr>
+    <p id="sosAlertText" style="font-size: 16px; font-weight: bold;"></p>
+    <small>سيختفي التنبيه الفوري تلقائياً بعد 30 ثانية مع حفظه في سجل الأحداث.</small>
+  </div>
+
+  <!-- Scripts -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const ciaSocket = io();
+    let currentUser = { name: "عميل تجريبي", publicCode: "001", rank: "CIA CHIEF", status: "في الخدمة" };
+    let mapLocations = {};
+
+    function setStoredData(key, data) {
+      localStorage.setItem(key, JSON.stringify(data));
+    }
+
+    function triggerSOSAlert() {
+      if (!currentUser) return;
+      ciaSocket.emit('sos:alert:send', {
+        code: currentUser.publicCode,
+        name: currentUser.name,
+        rank: currentUser.rank,
+        msg: 'طلب دعم ميداني عاجل وتعزيزات فورية!'
+      });
+    }
+
+    ciaSocket.on('sos:alert:broadcast', (data) => {
+      const modal = document.getElementById('sosAlertModal');
+      const text = document.getElementById('sosAlertText');
+      text.innerText = `العون #${data.code} - ${data.name} (${data.rank}): ${data.msg}`;
+      modal.style.display = 'block';
+
+      // إخفاء التنبيه المباشر تلقائياً بعد 30 ثانية لتفادي حجب الرؤية التكتيكية
+      setTimeout(() => {
+        modal.style.display = 'none';
+      }, 30000);
+    });
+
+    ciaSocket.on('map:location:broadcast', (locations) => {
+      mapLocations = locations;
+      if (typeof renderAllMapMarkers === 'function') {
+        renderAllMapMarkers();
+      }
+    });
+
+    function send10Code(code) {
+      ciaSocket.emit('radio:signal:send', {
+        sender: currentUser.name,
+        code: code
+      });
+    }
+  </script>
+  <script src="gta-map.js"></script>
+</body>
+</html>
