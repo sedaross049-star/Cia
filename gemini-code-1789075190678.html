@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BLACK RIDGE CIA</title>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root {
+            --bg-main: #030508;
+            --bg-card: #090e17;
+            --bg-input: #020407;
+            --border-color: #162032;
+            --accent-blue: #0088ff;
+            --accent-gold: #d97706;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --text-white: #f1f5f9;
+            --text-dim: #64748b;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Tajawal', sans-serif; }
+        body { background-color: var(--bg-main); color: var(--text-white); direction: rtl; min-height: 100vh; padding: 20px 10px; }
+
+        .app-container { max-width: 450px; margin: 0 auto; display: flex; flex-direction: column; gap: 15px; }
+        
+        .header { text-align: center; margin-bottom: 5px; }
+        .header img { width: 60px; height: 60px; margin-bottom: 5px; }
+        .header h1 { font-size: 20px; color: var(--accent-gold); font-weight: 900; }
+        .header h2 { font-size: 11px; color: var(--text-dim); }
+
+        .tabs-bar { display: flex; background-color: #060910; border: 1px solid var(--border-color); border-radius: 10px; padding: 4px; gap: 4px; }
+        .tab-btn { flex: 1; padding: 12px; text-align: center; font-size: 13px; font-weight: 700; color: var(--text-dim); border-radius: 8px; cursor: pointer; user-select: none; }
+        .tab-btn.active { background-color: var(--bg-card); color: var(--accent-blue); border: 1px solid var(--border-color); }
+
+        .panel { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 8px 20px rgba(0,0,0,0.7); }
+
+        .input-group { display: flex; flex-direction: column; gap: 5px; text-align: right; }
+        .input-group label { font-size: 12px; color: var(--text-dim); font-weight: 700; }
+        .input-group input { width: 100%; padding: 12px; background-color: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; font-size: 14px; outline: none; }
+        .input-group input:focus { border-color: var(--accent-blue); }
+
+        .btn-action {
+            width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 14px; font-weight: 900;
+            cursor: pointer; text-align: center; display: block; margin-top: 5px; user-select: none;
+            position: relative; z-index: 100; touch-action: manipulation; pointer-events: auto !important;
+        }
+        .btn-action:active { transform: scale(0.98); opacity: 0.9; }
+
+        .btn-blue { background-color: var(--accent-blue); color: #fff; }
+        .btn-green { background-color: var(--accent-green); color: #fff; }
+        .btn-red { background-color: var(--accent-red); color: #fff; }
+
+        .char-card-item { background-color: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 10px; text-align: right; }
+        .char-card-item h4 { color: var(--accent-gold); margin-bottom: 4px; }
+        .char-card-item p { font-size: 12px; color: var(--text-dim); }
+
+        .hidden-panel { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <div class="header">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/2/25/Seal_of_the_Central_Intelligence_Agency.svg" alt="CIA">
+            <h1>BLACK RIDGE CIA</h1>
+            <h2>TACTICAL INTELLIGENCE SYSTEM</h2>
+        </div>
+
+        <div id="navigationBar" class="tabs-bar">
+            <div id="tabNavLogin" class="tab-btn active">تسجيل الدخول</div>
+            <div id="tabNavRegister" class="tab-btn">حساب جديد</div>
+            <div id="tabNavMyChars" class="tab-btn">شخصياتي</div>
+        </div>
+
+        <!-- 1. واجهة تسجيل الدخول -->
+        <div id="panelLogin" class="panel">
+            <div class="input-group">
+                <label>اسم الشخصية:</label>
+                <input type="text" id="loginCharName" placeholder="ادخل اسم الشخصية">
+            </div>
+            <div class="input-group">
+                <label>الكود السري للشخصية:</label>
+                <input type="password" id="loginCharCode" placeholder="****">
+            </div>
+            <button type="button" id="btnSubmitLogin" class="btn-action btn-blue">دخول النظام</button>
+        </div>
+
+        <!-- 2. واجهة حساب جديد -->
+        <div id="panelRegister" class="panel hidden-panel">
+            <div class="input-group">
+                <label>اسم الحساب الأساسي:</label>
+                <input type="text" id="regAccountName" placeholder="اسم المستخدم">
+            </div>
+            <div class="input-group">
+                <label>كلمة مرور الحساب:</label>
+                <input type="password" id="regAccountPass" placeholder="****">
+            </div>
+            <div class="input-group">
+                <label>تأكيد كلمة المرور:</label>
+                <input type="password" id="regAccountPassConfirm" placeholder="****">
+            </div>
+            <div class="input-group">
+                <label>اسم الشخصية الأولى:</label>
+                <input type="text" id="regFirstCharName" placeholder="مثال: Alexander Mahone">
+            </div>
+            <div class="input-group">
+                <label>كود الشخصية الأولى:</label>
+                <input type="password" id="regFirstCharCode" placeholder="****">
+            </div>
+            <button type="button" id="btnSubmitRegister" class="btn-action btn-green">تأكيد وإنشاء الحساب</button>
+        </div>
+
+        <!-- 3. واجهة شخصياتي -->
+        <div id="panelMyChars" class="panel hidden-panel">
+            <div id="verifyOwnerBox">
+                <p style="font-size: 12px; color: var(--text-dim); text-align: center; margin-bottom: 10px;">ادخل بيانات الحساب لاسترجاع قائمة الشخصيات:</p>
+                <div class="input-group">
+                    <label>اسم الحساب:</label>
+                    <input type="text" id="verifyAccName" placeholder="اسم الحساب">
+                </div>
+                <div class="input-group" style="margin-top: 8px;">
+                    <label>كلمة المرور:</label>
+                    <input type="password" id="verifyAccPass" placeholder="****">
+                </div>
+                <button type="button" id="btnSubmitFetchChars" class="btn-action btn-blue">عرض الشخصيات</button>
+            </div>
+            <div id="charsListResult"></div>
+        </div>
+
+        <!-- 4. شاشة لوحة التحكم -->
+        <div id="panelDashboard" class="panel hidden-panel">
+            <div style="text-align: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                <h3 id="dashCharName" style="color: var(--accent-gold);">-</h3>
+                <p id="dashCharRole" style="font-size: 12px; color: var(--accent-blue);">-</p>
+            </div>
+            <div class="input-group">
+                <label>كود تعريف الشخصية (Public Code):</label>
+                <div id="dashPublicCode" style="background-color: var(--bg-input); padding: 12px; border-radius: 8px; text-align: center; color: var(--accent-gold); font-weight: 700;">-</div>
+            </div>
+            <button type="button" id="btnSubmitLogout" class="btn-action btn-red">تسجيل الخروج</button>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentSession = null;
+
+        // دالة موحدة لربط الأزرار بدون تعليق
+        function bindClick(elementId, callback) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            
+            const action = (e) => {
+                e.preventDefault();
+                callback();
+            };
+
+            el.addEventListener('click', action);
+            el.addEventListener('touchstart', action, { passive: false });
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            bindClick('tabNavLogin', () => switchTab('login'));
+            bindClick('tabNavRegister', () => switchTab('register'));
+            bindClick('tabNavMyChars', () => switchTab('mychars'));
+
+            bindClick('btnSubmitLogin', performLogin);
+            bindClick('btnSubmitRegister', performRegister);
+            bindClick('btnSubmitFetchChars', fetchMyCharacters);
+            bindClick('btnSubmitLogout', performLogout);
+        });
+
+        function switchTab(tabName) {
+            if (currentSession) return;
+
+            document.getElementById('tabNavLogin').classList.remove('active');
+            document.getElementById('tabNavRegister').classList.remove('active');
+            document.getElementById('tabNavMyChars').classList.remove('active');
+
+            document.getElementById('panelLogin').classList.add('hidden-panel');
+            document.getElementById('panelRegister').classList.add('hidden-panel');
+            document.getElementById('panelMyChars').classList.add('hidden-panel');
+
+            if (tabName === 'login') {
+                document.getElementById('tabNavLogin').classList.add('active');
+                document.getElementById('panelLogin').classList.remove('hidden-panel');
+            } else if (tabName === 'register') {
+                document.getElementById('tabNavRegister').classList.add('active');
+                document.getElementById('panelRegister').classList.remove('hidden-panel');
+            } else if (tabName === 'mychars') {
+                document.getElementById('tabNavMyChars').classList.add('active');
+                document.getElementById('panelMyChars').classList.remove('hidden-panel');
+            }
+        }
+
+        function performLogin() {
+            const charName = document.getElementById('loginCharName').value.trim();
+            const charCode = document.getElementById('loginCharCode').value.trim();
+
+            if (!charName || !charCode) return alert('يرجى كتابة البيانات المطلوبة!');
+            socket.emit('login_character', { characterName: charName, characterCode: charCode });
+        }
+
+        function performRegister() {
+            const accName = document.getElementById('regAccountName').value.trim();
+            const pass = document.getElementById('regAccountPass').value.trim();
+            const passConfirm = document.getElementById('regAccountPassConfirm').value.trim();
+            const firstChar = document.getElementById('regFirstCharName').value.trim();
+            const firstCode = document.getElementById('regFirstCharCode').value.trim();
+
+            if (!accName || !pass || !firstChar || !firstCode) return alert('يرجى إدخال جميع الحقول!');
+            if (pass !== passConfirm) return alert('كلمات المرور غير متطابقة!');
+
+            socket.emit('create_account', {
+                accountName: accName,
+                password: pass,
+                firstCharacterName: firstChar,
+                firstCharacterCode: firstCode
+            });
+        }
+
+        function fetchMyCharacters() {
+            const accName = document.getElementById('verifyAccName').value.trim();
+            const pass = document.getElementById('verifyAccPass').value.trim();
+            if (!accName || !pass) return alert('ادخل بيانات الحساب الرئيسية!');
+            
+            socket.emit('get_my_characters_verify', { accountName: accName, password: pass });
+        }
+
+        function performLogout() {
+            socket.emit('logout');
+            currentSession = null;
+            document.getElementById('navigationBar').classList.remove('hidden-panel');
+            document.getElementById('panelDashboard').classList.add('hidden-panel');
+            switchTab('login');
+        }
+
+        socket.on('auth_success', (data) => {
+            currentSession = data;
+
+            document.getElementById('navigationBar').classList.add('hidden-panel');
+            document.getElementById('panelLogin').classList.add('hidden-panel');
+            document.getElementById('panelRegister').classList.add('hidden-panel');
+            document.getElementById('panelMyChars').classList.add('hidden-panel');
+
+            document.getElementById('panelDashboard').classList.remove('hidden-panel');
+
+            document.getElementById('dashCharName').innerText = data.characterName;
+            document.getElementById('dashCharRole').innerText = "الرتبة: " + data.role;
+            document.getElementById('dashPublicCode').innerText = data.publicCode;
+        });
+
+        socket.on('auth_error', (message) => alert(message));
+
+        socket.on('receive_my_characters', (chars) => {
+            document.getElementById('verifyOwnerBox').style.display = 'none';
+            const listContainer = document.getElementById('charsListResult');
+            listContainer.innerHTML = '';
+
+            chars.forEach(c => {
+                const item = document.createElement('div');
+                item.className = 'char-card-item';
+                item.innerHTML = `
+                    <h4>${c.characterName}</h4>
+                    <p>الرتبة: ${c.role}</p>
+                    <p style="color:var(--accent-blue); margin-bottom: 8px;">Public Code: ${c.publicCode}</p>
+                    <button type="button" class="btn-action btn-blue" id="switchBtn_${c.characterId}">دخول بهذه الشخصية</button>
+                `;
+                listContainer.appendChild(item);
+
+                setTimeout(() => {
+                    bindClick(`switchBtn_${c.characterId}`, () => {
+                        socket.emit('direct_character_login', { accountId: c.accountId, characterId: c.characterId });
+                    });
+                }, 50);
+            });
+        });
+    </script>
+</body>
+</html>
