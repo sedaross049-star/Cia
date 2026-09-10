@@ -5,131 +5,126 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
-});
+const io = new Server(server);
 
-app.use(express.json());
-app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname)));
 
-// قواعد البيانات المؤقتة في الذاكرة (In-Memory Database)
-let users = [];
-let pendingRequests = []; // طلبات الانضمام 0012
-let mapLocations = {};
-let reports = []; // أرشيف القضايا والتقارير
-let activeRadioChannel = 'CH-1';
+// قاعدة البيانات المؤقتة
+const db = {
+    accounts: [
+        { accountId: "acc_101", accountName: "MohammedAccount", password: "123", role: "Agent", maxCharacters: 3 }
+    ],
+    characters: [
+        { characterId: "char_101", accountId: "acc_101", characterName: "Alexander Mahone", characterCode: "1531", publicCode: "ALPHA#1", role: "CIA CHIEF", isOnline: false }
+    ]
+};
 
-// كود القيادة الافتراضي ورمز الحفظ
-const CHIEF_JOIN_CODE = '1531';
-const CHIEF_SECRET_SAVE_CODE = '4139';
-
-// Socket.io Event Handling
 io.on('connection', (socket) => {
-  console.log(`[SYS] جهاز متصل جديد: ${socket.id}`);
+    // 1. تسجيل الدخول بشخصية
+    socket.on('login_character', (data) => {
+        const charName = (data.characterName || '').trim();
+        const charCode = (data.characterCode || '').trim();
 
-  // إرسال البيانات الأولية للعميل عند الاتصال
-  socket.emit('init:data', {
-    locations: mapLocations,
-    channel: activeRadioChannel
-  });
+        const character = db.characters.find(c => 
+            c.characterName.toLowerCase() === charName.toLowerCase() && 
+            c.characterCode === charCode
+        );
 
-  // تحديث الموقع على الخريطة
-  socket.on('map:location:update', (data) => {
-    mapLocations[data.code] = data;
-    io.emit('map:location:broadcast', mapLocations);
-  });
+        if (!character) {
+            return socket.emit('auth_error', 'اسم الشخصية أو الكود غير صحيح!');
+        }
 
-  // إزالة الموقع من الخريطة
-  socket.on('map:location:remove', (data) => {
-    if (mapLocations[data.code]) {
-      delete mapLocations[data.code];
-      io.emit('map:location:broadcast', mapLocations);
-    }
-  });
+        const account = db.accounts.find(a => a.accountId === character.accountId);
+        character.isOnline = true;
+        socket.currentSession = { accountId: account.accountId, characterId: character.characterId };
 
-  // إرسال ندادات الطوارئ S.O.S
-  socket.on('sos:alert:send', (sosData) => {
-    const alertPayload = {
-      ...sosData,
-      timestamp: new Date().toLocaleTimeString('ar-EG'),
-      id: Date.now()
-    };
-    // بث التنبيه الفوري لجميع الأجهزة
-    io.emit('sos:alert:broadcast', alertPayload);
-  });
-
-  // إشارات وبث الراديو التكتيكي (Push-To-Talk & 10-Codes)
-  socket.on('radio:signal:send', (signalData) => {
-    io.emit('radio:signal:broadcast', {
-      ...signalData,
-      timestamp: new Date().toLocaleTimeString('ar-EG')
+        socket.emit('auth_success', {
+            accountId: account.accountId,
+            characterId: character.characterId,
+            characterName: character.characterName,
+            role: character.role,
+            publicCode: character.publicCode
+        });
     });
-  });
 
-  socket.on('disconnect', () => {
-    console.log(`[SYS] قطع اتصال الجهاز: ${socket.id}`);
-  });
-});
+    // 2. إنشاء حساب جديد
+    socket.on('create_account', (data) => {
+        const accName = (data.accountName || '').trim();
+        const exist = db.accounts.find(a => a.accountName.toLowerCase() === accName.toLowerCase());
 
-// API Routes
-app.post('/api/auth/login', (req, res) => {
-  const { name, code } = req.body;
+        if (exist) {
+            return socket.emit('auth_error', 'اسم الحساب مستخدم من قبل!');
+        }
 
-  // التحقق من كود تأسيس القيادة
-  if (code === CHIEF_JOIN_CODE) {
-    return res.json({
-      status: 'CHIEF_SETUP_REQUIRED',
-      message: 'يتطلب إدخال رمز الحفظ السرّي لتأسيس القيادة.'
+        const newAccId = "acc_" + Date.now();
+        const newCharId = "char_" + Date.now();
+
+        db.accounts.push({
+            accountId: newAccId,
+            accountName: accName,
+            password: data.password,
+            role: "Agent",
+            maxCharacters: 3
+        });
+
+        const newChar = {
+            characterId: newCharId,
+            accountId: newAccId,
+            characterName: data.firstCharacterName.trim(),
+            characterCode: data.firstCharacterCode.trim(),
+            publicCode: "AGENT#" + Math.floor(1000 + Math.random() * 9000),
+            role: "Agent",
+            isOnline: true
+        };
+
+        db.characters.push(newChar);
+        socket.currentSession = { accountId: newAccId, characterId: newCharId };
+
+        socket.emit('auth_success', {
+            accountId: newAccId,
+            characterId: newCharId,
+            characterName: newChar.characterName,
+            role: newChar.role,
+            publicCode: newChar.publicCode
+        });
     });
-  }
 
-  // طلب انضمام جديد عبر بوابة 0012
-  if (code === '0012') {
-    const existingPending = pendingRequests.find(p => p.name === name);
-    if (!existingPending) {
-      pendingRequests.push({ name, requestedAt: new Date().toLocaleString('ar-EG') });
-    }
-    return res.json({
-      status: 'PENDING',
-      message: 'تم إرسال طلب الانضمام إلى قائمة انتظار القيادة (CIA CHIEF).'
+    // 3. عرض الشخصيات مع التحقق
+    socket.on('get_my_characters_verify', (data) => {
+        const accName = (data.accountName || '').trim();
+        const account = db.accounts.find(a => a.accountName.toLowerCase() === accName.toLowerCase() && a.password === data.password);
+
+        if (!account) {
+            return socket.emit('auth_error', 'بيانات الحساب غير صحيحة!');
+        }
+
+        const chars = db.characters.filter(c => c.accountId === account.accountId);
+        socket.emit('receive_my_characters', chars);
     });
-  }
 
-  const user = users.find(u => u.publicCode === code && u.name === name);
-  if (user) {
-    return res.json({ status: 'SUCCESS', user });
-  }
+    // 4. الدخول المباشر لشخصية
+    socket.on('direct_character_login', (data) => {
+        const character = db.characters.find(c => c.characterId === data.characterId && c.accountId === data.accountId);
+        if (!character) {
+            return socket.emit('auth_error', 'تعذر العثور على الشخصية!');
+        }
 
-  return res.status(401).json({ status: 'ERROR', message: 'بيانات الدخول غير صحيحة أو الحساب غير معتمد.' });
-});
+        socket.currentSession = { accountId: character.accountId, characterId: character.characterId };
 
-// تأسيس حساب القائد باستخدام رمز الحفظ 4139
-app.post('/api/auth/setup-chief', (req, res) => {
-  const { name, personalCode, saveCode } = req.body;
+        socket.emit('auth_success', {
+            accountId: character.accountId,
+            characterId: character.characterId,
+            characterName: character.characterName,
+            role: character.role,
+            publicCode: character.publicCode
+        });
+    });
 
-  if (saveCode !== CHIEF_SECRET_SAVE_CODE) {
-    return res.status(403).json({ status: 'ERROR', message: 'رمز الحفظ السرّي غير صحيح!' });
-  }
-
-  const chiefUser = {
-    name,
-    publicCode: personalCode,
-    rank: 'CIA CHIEF',
-    role: 'CHIEF',
-    isIdentityComplete: false
-  };
-
-  users.push(chiefUser);
-  return res.json({ status: 'SUCCESS', user: chiefUser });
+    // 5. تسجيل الخروج
+    socket.on('logout', () => {
+        socket.currentSession = null;
+    });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`=================================`);
-  console.log(`CIA FIELD SYSTEM SERVER RUNNING`);
-  console.log(`URL: http://localhost:${PORT}`);
-  console.log(`=================================`);
-});
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
